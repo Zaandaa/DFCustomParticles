@@ -181,6 +181,7 @@ class Spawn : trigger_base {
 
 	[text] float life_min = 2; // seconds
 	[text] float life_range = 0.5;
+	[text] bool start_level_aged = false; // only applies to min_particles initial spawn
 
 	[text] bool rotate = true; // also applies random initial rotation
 	[text] float rotate_spd = 0;
@@ -224,6 +225,8 @@ class Spawn : trigger_base {
 		particles.resize(0);
 		for (uint i = 0; i < min_particles; i++) {
 			add_particle();
+			if (start_level_aged)
+				particles[i].age = int((rand() / MAX_RAND) * particles[i].life);
 		}
 	}
 
