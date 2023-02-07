@@ -265,10 +265,12 @@ class Spawn : trigger_base {
 		spawn_queued = false;
 
 		particles.resize(0);
-		for (uint i = 0; i < min_particles; i++) {
-			add_particle();
-			if (start_level_aged)
-				particles[i].age = int((rand() / MAX_RAND) * particles[i].life);
+		if (g.layer_visible(layer)) {
+			for (uint i = 0; i < min_particles; i++) {
+				add_particle();
+				if (start_level_aged)
+					particles[i].age = int((rand() / MAX_RAND) * particles[i].life);
+			}
 		}
 	}
 
@@ -342,11 +344,13 @@ class Spawn : trigger_base {
 	}
 
 	void step() {
-		if (!active)
+		if (!active || !g.layer_visible(layer))
 			return;
 
-		if (s.debug_show_particle_count)
-			s.p += particles.length();
+		if (s.debug_show_particle_count) {
+			s.debug_count_s++;
+			s.debug_count_p += particles.length();
+		}
 
 		if (particles.length() <= max_particles) {
 			spawn_timer += FRAME;
@@ -396,7 +400,8 @@ class script {
 
 	[text] bool debug_show_particle_count = false;
 	[text] bool editor_show_boxes = false;
-	int p;
+	int debug_count_s;
+	int debug_count_p;
 	textfield@ debug_particles;
 
 	EmbedData@ ed;
@@ -414,7 +419,8 @@ class script {
 		@sprite_handler = create_sprites();
 		sprite_handler.add_sprite_set("script");
 
-		p = 0;
+		debug_count_s = 0;
+		debug_count_p = 0;
 		@debug_particles = @create_textfield();
 		debug_particles.set_font("Caracteres", 36);
 	}
@@ -439,8 +445,9 @@ class script {
 
 	void step(int e) {
 		if (debug_show_particle_count) {
-			debug_particles.text("P: " + p);
-			p = 0;
+			debug_particles.text("S: " + debug_count_s + " -- P: " + debug_count_p);
+			debug_count_s = 0;
+			debug_count_p = 0;
 		}
 	}
 
