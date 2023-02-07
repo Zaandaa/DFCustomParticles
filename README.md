@@ -17,4 +17,6 @@ If using embeds, edit **CPEmbed.as** as follows to match your sprites in your em
 3. Include and specify all arguments in the `get_info()` dictionary.
 4. After editing **CPEmbed.as**, add **CustomParticles.as** to your level scripts.
 
+If not using embeds, rename **CPEmbedEmpty.as** to **CPEmbed.as**.
+
 See **CPEmbed.as** for further comments and examples.

@@ -4,6 +4,27 @@ const float PI = 3.1415926535897932384626433832795;
 const float MAX_RAND = 1073741824;
 const float FRAME = 1.0 / 60.0;
 
+
+uint interp_color(uint c1, uint c2, float x) {
+	int a1 = c1 >> 24;
+	int a2 = c2 >> 24;
+	int r1 = c1 >> 16 & 0xFF;
+	int r2 = c2 >> 16 & 0xFF;
+	int g1 = c1 >> 8 & 0xFF;
+	int g2 = c2 >> 8 & 0xFF;
+	int b1 = c1 & 0xFF;
+	int b2 = c2 & 0xFF;
+
+	int a = int((a2 - a1) * x) + a1;
+	int r = int((r2 - r1) * x) + r1;
+	int g = int((g2 - g1) * x) + g1;
+	int b = int((b2 - b1) * x) + b1;
+
+	uint c = (a << 24) + (r << 16) + (g << 8) + b;
+	return c;
+}
+
+
 class Particle {
 	float x = 0;
 	float y = 0;
@@ -23,11 +44,12 @@ class Particle {
 	int s_palette = 0;
 	string embed = "";
 
-	float fade_in = 0.2; // percentage of life, not seconds
+	float fade_in = 0.2;
 	float fade_out = 0.2;
 	int life = 120;
 
 	int age;
+	bool alive = true;
 
 	bool animate = false;
 	int anim_frames;
@@ -37,9 +59,10 @@ class Particle {
 	int anim_timer;
 	int anim_current_frame;
 
-	uint alpha = 0;
-	bool alive = true;
-	bool stay_alive = false;
+	bool change_color = false;
+	uint color = 0x00FFFFFF;
+	uint color1 = 0xFFFFFFFF;
+	uint color2 = 0xFFFFFFFF;
 
 	Particle() {}
 
@@ -62,7 +85,7 @@ class Particle {
 		animate = false;
 	}
 
-	void reset(float px, float py, float pxv, float pyv, float pf, float pxg, float pyg, float pr, float prs, int pl, float pxs, float pys, float fi, float fo) {
+	void reset(float px, float py, float pxv, float pyv, float pf, float pxg, float pyg, float pr, float prs, int pl, float pxs, float pys, float fi, float fo, uint pc1, uint pc2, bool pcc) {
 		x = px;
 		y = py;
 		xvel = pxv;
@@ -79,9 +102,13 @@ class Particle {
 
 		fade_in = fi;
 		fade_out = fo;
+		color = fi > 0 ? 0x00FFFFFF : pc1;
+		color1 = pc1;
+		color2 = pc2;
+		change_color = pcc;
+
 		age = 0;
 		alive = true;
-		alpha = 0;
 		anim_timer = 0;
 		anim_current_frame = 0;
 	}
@@ -141,14 +168,24 @@ class Particle {
 			}
 		}
 
+
+		// color
+		if (change_color)
+			color = interp_color(color1, color2, float(age) / life);
+		else
+			color = color1;
+
 		// alpha
 		float l = float(age) / life;
 		float a = 1;
 		if (fade_in > 0 && l < fade_in)
 			a = l / fade_in;
 		else if (fade_out > 0 && 1 - l < fade_out)
-			a = (1 - l) / fade_out;
-		alpha = uint(0xFF * a);
+			a = max(0, (1 - l) / fade_out);
+		uint alpha = uint(0xFF * a);
+		uint combined_alpha = uint((float(color >> 24) / 0xFF) * (float(alpha) / 0xFF) * 0xFF) << 24;
+
+		color = combined_alpha | (color % (1 << 24));
 
 		return false;
 	}
@@ -168,36 +205,41 @@ class Spawn : trigger_base {
 
 	[text] uint max_particles = 10;
 	[text] uint min_particles = 0;
-	[text] float spawn_rate = 0.2; // seconds per particle spawn, only used if min < max
-	[text] float spawn_chance = 1; // likelihood out of 1 that a particle is created when able, checked each frame
+	[text|tooltip:"seconds between particle spawns, only used if min < max"] float spawn_rate = 0.2;
+	[text|tooltip:"chance out of 1 that a particle is added when normally able"] float spawn_chance = 1;
 
-	[text] float vel_min = 0.1;
-	[text] float vel_range = 0.2;
+	[text|tooltip:"distance units per frame, particle starting velocity"] float vel_min = 0.1;
+	[text|tooltip:"randomly adds up to this value to vel min"] float vel_range = 0.2;
 	[angle] float direction = 0;
-	[text] float angle_range = 0; // applies to either side of direction
-	[text] float friction = 0;
-	[text] float gravity = 0;
+	[text|tooltip:"degrees, applies to either side of direction"] float angle_range = 0;
+	[text|tooltip:"use values like 0.01"] float friction = 0;
+	[text|tooltip:"use values like 0.1"] float gravity = 0;
 	[angle] float gravity_direction = 180;
 
-	[text] float life_min = 2; // seconds
-	[text] float life_range = 0.5;
-	[text] bool start_level_aged = false; // only applies to min_particles initial spawn
+	[text|tooltip:"particle life in seconds"] float life_min = 2;
+	[text|tooltip:"randomly adds up to this value to particle life"] float life_range = 0.5;
+	[text|tooltip:"applies random aging when level starts, only used if min > 0"] bool start_level_aged = false;
 
-	[text] bool rotate = true; // also applies random initial rotation
-	[text] float rotate_spd = 0;
-	[text] float rotate_spd_range = 0.2; // applies to either side of rotate_spd
+	[text|tooltip:"apply random initial rotation"] bool rotate = true;
+	[text|tooltip:"degrees per second"] float rotate_spd = 0;
+	[text|tooltip:"applies to either side of rotate speed"] float rotate_spd_range = 0.2;
+	[text|tooltip:"forces random scaling to be equal, uses x scale for both x and y"] bool keep_scale_ratio = false;
 	[text] float x_scale = 1;
 	[text] float x_scale_range = 0;
 	[text] float y_scale = 1;
 	[text] float y_scale_range = 0;
 	[text] bool flip_x = true;
 	[text] bool flip_y = true;
-	[text] float fade_in = 0.2; // percentage of life, not seconds, 0 = no fade
-	[text] float fade_out = 0.2;
+	[text|tooltip:"percentage of life from start, not seconds, 0 = no fade in"] float fade_in = 0.2;
+	[text|tooltip:"percentage of life from end, not seconds, 0 = no fade out"] float fade_out = 0.2;
 
-	[color, alpha] uint color = 0xFFFFFFFF;
+	[color, alpha|tooltip:"main color, applies this color and fog, needed for alpha"] uint color = 0xFFFFFFFF;
+	[color, alpha|tooltip:"only used if color change or use random color is on"] uint color2 = 0xFFFFFFFF;
+	[color, alpha|tooltip:"chooses based on color and color2"] bool use_random_color = false;
+	[color, alpha|tooltip:"transitions color to color2 over life, color can use random"] bool change_color = false;
+
 	[text] bool use_embed = false;
-	[text] string sprite_name = "foliage_25"; // also used for embed sprite_name
+	[text|tooltip:"also used for embed sprite name"] string sprite_name = "foliage_25";
 	[text] string sprite_set = "props2";
 	[text] int sprite_frame = 0;
 	[text] int sprite_palette = 0;
@@ -242,7 +284,10 @@ class Spawn : trigger_base {
 	void reset_particle(Particle@ p) {
 		float px, py, pxv, pyv, pxg, pyg, pr, prs, pxs, pys;
 		int pi, pl;
+		uint pc;
+		bool pcc;
 
+		// image
 		if (use_embed) {
 			dictionary ed = dictionary(s.embed_info[sprite_name]);
 			pi = int((rand() / MAX_RAND) * int(ed["sprites"]));
@@ -250,33 +295,46 @@ class Spawn : trigger_base {
 			int af = an ? int(ed["anim_frames"]) : 1;
 			bool al = an ? bool(ed["anim_loop"]) : true;
 			int ar =  an ? int(ed["anim_rate"]) : 1;
-
 			p.set_embed(sprite_name, sprite_name + pi, 0, 0, an, af, al, ar);
 		} else {
 			p.set_sprite(sprite_name, sprite_frame, sprite_palette);
 		}
 
+		// position
 		px = self.x() + (rand() / MAX_RAND) * w - w / 2;
 		py = self.y() + (rand() / MAX_RAND) * h - h / 2;
 
+		// vel
 		float v = vel_min + (rand() / MAX_RAND) * vel_range;
 		float a = (direction + (rand() / MAX_RAND) * angle_range - angle_range / 2) / 180 * PI - PI / 2;
 		pxv = v * cos(a);
 		pyv = v * sin(a);
 
+		// accel
 		float ga = gravity_direction / 180 * PI - PI / 2;
 		pxg = gravity * cos(ga);
 		pyg = gravity * sin(ga);
 
+		// rotation
 		pr = rotate ? ((rand() / MAX_RAND) * 360) : 0;
 		prs = rotate ? (rotate_spd + (rand() / MAX_RAND) * rotate_spd_range - rotate_spd_range / 2) : 0;
 
+		// life
 		pl = int(60 * life_min + (rand() / MAX_RAND) * 60 * life_range);
 
-		pxs = (x_scale + (rand() / MAX_RAND) * x_scale_range) * (flip_x && rand() / MAX_RAND < 0.5 ? 1 : -1);
-		pys = (y_scale + (rand() / MAX_RAND) * y_scale_range) * (flip_y && rand() / MAX_RAND < 0.5 ? 1 : -1);
+		// scale
+		pxs = x_scale + (rand() / MAX_RAND) * x_scale_range;
+		pys = keep_scale_ratio ? pxs : (y_scale + (rand() / MAX_RAND) * y_scale_range);
+		pxs *= (flip_x && rand() / MAX_RAND < 0.5) ? 1 : -1;
+		pys *= (flip_y && rand() / MAX_RAND < 0.5) ? 1 : -1;
 
-		p.reset(px, py, pxv, pyv, friction, pxg, pyg, pr, prs, pl, pxs, pys, fade_in, fade_out);
+		// color
+		pc = color;
+		if (use_random_color)
+			pc = interp_color(color, color2, rand() / MAX_RAND);
+		pcc = change_color;
+
+		p.reset(px, py, pxv, pyv, friction, pxg, pyg, pr, prs, pl, pxs, pys, fade_in, fade_out, pc, color2, pcc);
 	}
 
 	void editor_step() {
@@ -320,17 +378,15 @@ class Spawn : trigger_base {
 
 		for (uint i = 0; i < particles.length(); i++) {
 			Particle@ p = particles[i];
-			if (p.alive) {
-				uint a = uint((float(color >> 24) / 0xFF) * (float(p.alpha) / 0xFF) * 0xFF) << 24;
-				uint c = a | (color % (1 << 24));
-				s.sprite_handler.draw_world(layer, sublayer, p.s_name, p.s_frame, p.s_palette, p.x, p.y, p.rotation, p.xscale, p.yscale, c);
-			}
+			if (p.alive)
+				s.sprite_handler.draw_world(layer, sublayer, p.s_name, p.s_frame, p.s_palette, p.x, p.y, p.rotation, p.xscale, p.yscale, p.color);
 		}
 	}
 
 	void editor_draw(float sf) {
 		draw(sf);
-		g.draw_rectangle_world(layer, sublayer, self.x() - w / 2 , self.y() - h / 2, self.x() + w / 2, self.y() + h / 2, 0, 0x33FFCCCC);
+		if (s.editor_show_boxes || self.editor_selected())
+			g.draw_rectangle_world(layer, sublayer, self.x() - w / 2 , self.y() - h / 2, self.x() + w / 2, self.y() + h / 2, 0, 0x22FFCCCC);
 	}
 }
 
@@ -339,6 +395,7 @@ class script {
 	scene@ g;
 
 	[text] bool debug_show_particle_count = false;
+	[text] bool editor_show_boxes = false;
 	int p;
 	textfield@ debug_particles;
 
