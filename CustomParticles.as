@@ -425,6 +425,10 @@ class script {
 		debug_particles.set_font("Caracteres", 36);
 	}
 
+	void on_level_start() {
+		sprite_handler.add_sprite_set("script");
+	}
+
 	void build_sprites(message@ msg) {
 		array<string> build_list = ed.get_build_list();
 		for (uint s = 0; s < build_list.length(); s++) {
